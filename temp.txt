@@ -1,6 +1,0 @@
-# Initialise model
-clip_tokenizer, clip_processor, clip_model = preptools.initializeCLIP()
-
-output_values = preptools.getImageEmbeddingCLIP(image_file, clip_model, clip_processor)
-
-float(preptools.cosine_similarity(output_values_prev, output_values))

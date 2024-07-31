@@ -1,88 +1,251 @@
 import os
 import pathlib
-import numpy as np
-from matplotlib import pyplot as plt
 import cv2 as cv
+from matplotlib import pyplot as plt
 
-import sys
+# from inference import loadYoloModel, classifyYoloModel, segmentYoloModel
+import pandas as pd
+from datetime import datetime
+from tqdm import tqdm
+
 import glob
-import shutil
 
-from dataprep import tools
+from torchvision.io import read_image
+from torchvision.models import resnet50, ResNet50_Weights, resnet152, ResNet152_Weights
 
-###
+import numpy as np
+import json
 
-dataset_root = '/mnt/batch/tasks/shared/LS_root/mounts/clusters/research-cpu-mahesh/code' # AML mount, 100T disk space allocated, perfect for storing datasets here
-dataset_path = 'datasets/MSR-VTT/by_category'
-vtt_category = []
+import torch
+from transformers import CLIPTokenizerFast, CLIPProcessor, CLIPModel
+from matplotlib.image import  imread
 
-imageSavePath = 'datasets_prepped/MSR-VTT/by_category'        #Create images by category
+from skimage import metrics  
+from skimage import io, img_as_float
 
-imageCutRate = 1                                              #1 image every N seconds
-iCountMax = 300                                               #Max images to produce per video
+import random
 
-resize = True                                                 #Resize image or not
-resize_dim = (int(320/1), int(240/1))                         #width, height after resize if 'resize = True'
 
-createTiles = False
-nRows = 2
-mCols = 2
-
-video_file_extension = '.mp4'
-
-sample_seed = 42
-max_video_per_category = 50 # k videos to sample
-
-###
-# Quick test by reviewing first video
-for category in vtt_category:
+class tools:
     
-    video_files = []
+    def __init__(self):
+        print('Tools initiated')
+    
+    def makeTiles(self, nRows, mCols, image, imagecount, writepath, formatted_time):
 
-    video_files = preptools.getFileList(os.path.join(dataset_root, dataset_path, category), video_file_extension)
-    print(f'{len(video_files)} videos found for {category} category.')
-    
-    preptools.runSampleTest(video_files[0]) # First video
-    
-    break
-###
-# Create required directories if missing
-os.makedirs(os.path.join(dataset_root, imageSavePath), exist_ok=True)
-###
+        img = image
 
-for category in vtt_category:
-    
-    video_files = []
+        # Dimensions of the image
+        sizeX = img.shape[1]
+        sizeY = img.shape[0]
 
-    # All videos for a category
-    video_files = preptools.getFileList(os.path.join(dataset_root, dataset_path, category), video_file_extension)
-    
-    # print(f'Processing {category} category, {len(video_files)} video files found.')    
-    
-    # Randomly sample k videos, use seed for reproducibility
-    video_files_sampled = preptools.sample_k_items(max_video_per_category, video_files, sample_seed)
-    
-    print(f'Processing {category} category, {len(video_files)} video files found, sampled {len(list(set(video_files_sampled)))} unique videos.')
-    
-    category_directory = None
-    category_directory = os.path.join(dataset_root, imageSavePath, category)
-    # print(f'category_directory:{category_directory}')
+        # print(img.shape)
 
-    # Delete existing directory and it's content for the category. The directory will be recreated by videoToImages() function.
-    directory_path = category_directory
-    if os.path.isdir(directory_path):                              
-        # Remove the directory and all its contents  
-        shutil.rmtree(directory_path) 
-    
-    for video_file in video_files_sampled:
+        for i in range(0,nRows):
+            for j in range(0, mCols):
+                roi = img[i*int(sizeY/nRows):i*int(sizeY/nRows) + int(sizeY/nRows) ,j*int(sizeX/mCols):j*int(sizeX/mCols) + int(sizeX/mCols)]            
+                # cv2.imwrite('patches/patch_'+str(i)+str(j)+".jpg", roi)
+                cv.imwrite(os.path.join(writepath,os.path.basename(writepath)+'_'+formatted_time+'_image_'+str(imagecount)+'_'+str(i)+str(j)+'.jpg'), roi)
+
+
+    def getImage(self, cap, sec, writepath, imagecount, resize, resize_dim, createTiles, nRows, mCols):
+        hasFrames = False
+        cap.set(cv.CAP_PROP_POS_MSEC, sec*1000)
+        hasFrames, image = cap.read()
         
-        # print(f'Processing started {video_file}') 
+        ###
+        # print(f'sec:{sec}')
+        hours_to_show = sec // 3600  
+        minutes_to_show = (sec % 3600) // 60  
+        seconds_to_show = sec % 60  
+
+        formatted_time = "{:02d}-{:02d}-{:02d}".format(hours_to_show, minutes_to_show, seconds_to_show)
+        # print(formatted_time) 
+        ###
+
+        if hasFrames:
+
+            if resize:
+                # print(resize_dim)
+                image = cv.resize(image, resize_dim)
+
+            if createTiles:
+                self.makeTiles(nRows=nRows, mCols=mCols, image=image, imagecount=imagecount, writepath=writepath, formatted_time=formatted_time)
+            else:
+                cv.imwrite(os.path.join(writepath,os.path.basename(writepath)+'_'+formatted_time+'_image_'+str(imagecount)+'.jpg'), image)
+                # print(writepath,'image_'+str(imagecount)+'.jpg')
+
+        return hasFrames
+
+
+    def videoToImages(self, videoPath, imageSavePath, imageCutRate, iCountMax, resize, resize_dim, createTiles, nRows, mCols):
+        
+        iFrameCount = 0
+        iCount = 0
+        sec = 0
+        result = True
+
+        imageDirectoryName = videoPath.split('/')[len(videoPath.split('/'))-1]
+        # imageSavePath = os.path.join(imageSavePath,imageDirectoryName) #Update the path with a sub-directory based on video name
+        imageSavePath = os.path.join(imageSavePath,imageDirectoryName,'images') #Update the path with a sub-directory based on video name
+
+        #Create imageSavePath if does not exist
+        pathlib.Path(imageSavePath).mkdir(parents=True, exist_ok=True) 
+
+        cap = cv.VideoCapture(videoPath)
+
+        w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv.CAP_PROP_FPS)
+        fps = round(fps)
+        frame_count = int(cap.get(cv.CAP_PROP_FRAME_COUNT))  
+        video_length = frame_count / fps  
+        # print(f'Video Stats - w:{w}, h:{h}, fps:{fps}')
+
+        # MK
+        # result = self.getImage(cap,sec,imageSavePath,iCount, resize, resize_dim, createTiles, nRows, mCols)
+        # print(result)
+
+        while result==True and iCount <= iCountMax and sec <= video_length:                        
+            
+            # Get first frame
+            if iFrameCount == 0 or iFrameCount % (fps*imageCutRate) == 0: 
+                
+                # print(f'Inside, iFrameCount:{iFrameCount}')
+                
+                result = self.getImage(cap,sec,imageSavePath,iCount, resize, resize_dim, createTiles, nRows, mCols)
+                # print(f'result:{result}')
+                
+                iCount += 1
+                sec += imageCutRate
+                sec = round(sec,2)
+
+                if iCount % 100 == 0:
+                    print(f'{iCount} images created.')
+            
+            iFrameCount += 1
+
+        cap.release()
+
+        # if resize:
+        #     print(f'Video frame size resized to {resize_dim}')
+        # if createTiles:
+        #     print(f'Images cut into {nRows} X {mCols} tiles.')
+
+        # print(f'{iCount} images saved at {imageSavePath}')
+
+
+    def getAlbumTransform(self):
+
+        albumentations_pil_transform = A.Compose([
+            # A.RandomCrop(width=480, height=360, p=0.6),
+            A.HorizontalFlip(p=0.6),
+            # A.RandomBrightnessContrast(p=0.7),
+            A.Rotate(limit=(-90,90), p=0.6, border_mode=cv.BORDER_CONSTANT)    
+        ])
+
+        return albumentations_pil_transform
+
+
+    def applyAlbumTransform(self, transform, sourcePath, savePath):    
+
+        image = Image.open(sourcePath)
+
+        # Convert PIL image to numpy array
+        image_np = np.array(image)
+        # Apply transformations
+        augmented = albumentations_pil_transform(image=image_np)
+        # Convert numpy array to PIL Image
+        image = Image.fromarray(augmented['image'])
+
+        saveFileName = os.path.basename(sourcePath)
+        saveFileName = saveFileName.split('.')[0]+'_a.'+saveFileName.split('.')[1]   
+
+        #Create imageSavePath if does not exist
+        pathlib.Path(savePath).mkdir(parents=True, exist_ok=True) 
+
+        image.save(os.path.join(savePath,saveFileName))
+
+        # plot.imshow(image)
+        
+    def getFPS(self, videoPath):             
+        return round(cv.VideoCapture(videoPath).get(cv.CAP_PROP_FPS))
+        
+    def runSampleTest(self, videoPath):             
+        cap = cv.VideoCapture(videoPath)
+
+        w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv.CAP_PROP_FPS)
+        fps = round(fps)
+        
+        frame_count = int(cap.get(cv.CAP_PROP_FRAME_COUNT))  
+  
+        video_length = frame_count / fps  
+        video_length_minutes = round(video_length / 60)        
+
+        # print(f'Video Stats - w:{w}, h:{h}, fps:{fps}, Video length: {video_length_minutes} minutes')
+        print(f'Video Stats - w:{w}, h:{h}, fps:{fps}, Video length: {video_length} seconds')
+
+        while cap.isOpened():
+        # while True:    
+            ret, frame = cap.read() 
+
+            if ret:
+
+                frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+
+                # cv.imshow('frame', frame)
+                plt.imshow(frame_rgb)
+                plt.title('Frame #')
+                plt.show()  
+
+                # print(frame)
+
+            break
+
+            if cv.waitKey(1) == ord('q'):
+                break
+
+        cap.release()
+        # cv.destroyAllWindows()
+        
+    def saveDataframe(self, df_to_save, save_df_path, sep, quotechar = '"', header = True, index = False, overwrite = False):        
+        
+        mode = 'x' #Raise error if file exists
+        
+        if overwrite:
+            mode = 'w'
+            
+        df_to_save.to_csv(save_df_path, sep=sep, header=header, index=index, mode=mode)
+        
+        
+    def getFrame(self, cap, sec, resize, resize_dim):
+        hasFrames = False
+        cap.set(cv.CAP_PROP_POS_MSEC, sec*1000)
+        hasFrames, frame = cap.read()
+        
+        ###
+        # print(f'sec:{sec}')
+        hours_to_show = sec // 3600  
+        minutes_to_show = (sec % 3600) // 60  
+        seconds_to_show = sec % 60  
+
+        formatted_time = "{:02d}-{:02d}-{:02d}".format(hours_to_show, minutes_to_show, seconds_to_show)
+        # print(formatted_time) 
+        ###
+
+        if hasFrames:
+
+            if resize:
+                # print(resize_dim)
+                frame = cv.resize(frame, resize_dim)           
+
+        return hasFrames, frame, formatted_time
     
-        preptools.videoToImages(video_file, category_directory, 
-                                imageCutRate, iCountMax, resize, resize_dim, createTiles=createTiles, nRows=nRows, mCols=mCols)       
-
-
-print()
-print(f'Frame extraction completed for {max_video_per_category} videos per category {vtt_category}')
-###
-###
+    def getFileList(self, directory_path, file_extension):
+         
+        # Use glob to get a list of files (e.g. .mp4) in the directory  
+        return glob.glob(directory_path + '/*' + file_extension)
+    
+    

@@ -18,3 +18,9 @@ ipython kernel install --name huggingface1 --display-name "Python 3.9 (huggingfa
 pip install -r requirements.txt  
   
 echo "Environment setup is complete."  
+
+
+#####
+
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate my_env

@@ -1,6 +1,10 @@
 #!/bin/bash  
 
-eval "$(conda shell.bash hook)"  
+# Determine the base directory of Conda  
+CONDA_BASE=$(conda info --base)  
+  
+# Source the Conda initialization script  
+source "$CONDA_BASE/etc/profile.d/conda.sh" 
  
 # Step 1: Create a new conda environment with Python 3.9  
 conda create --name huggingface1 python==3.9 --yes  

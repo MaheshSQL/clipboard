@@ -17,7 +17,9 @@ conda install notebook ipykernel --yes
   
 # Step 4: Configure the Jupyter kernel to use the new environment  
 ipython kernel install --name huggingface1 --display-name "Python 3.9 (huggingface1)" --user  
-  
+
+conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia --yes 
+
 # Step 5: Install dependencies from requirements.txt using pip  
 pip install -r requirements.txt  
   

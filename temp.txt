@@ -1,32 +1,88 @@
-#!/bin/bash  
+import os
+import pathlib
+import numpy as np
+from matplotlib import pyplot as plt
+import cv2 as cv
 
-# Determine the base directory of Conda  
-CONDA_BASE=$(conda info --base)  
-  
-# Source the Conda initialization script  
-source "$CONDA_BASE/etc/profile.d/conda.sh" 
- 
-# Step 1: Create a new conda environment with Python 3.9  
-conda create --name huggingface1 python==3.9 --yes  
-  
-# Step 2: Activate the new environment  
-source activate huggingface1  
-  
-# Step 3: Install notebook and ipykernel  
-conda install notebook ipykernel --yes  
-  
-# Step 4: Configure the Jupyter kernel to use the new environment  
-ipython kernel install --name huggingface1 --display-name "Python 3.9 (huggingface1)" --user  
+import sys
+import glob
+import shutil
 
-conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia --yes 
+from dataprep import tools
 
-# Step 5: Install dependencies from requirements.txt using pip  
-pip install -r requirements.txt  
-  
-echo "Environment setup is complete."  
+###
+
+dataset_root = '/mnt/batch/tasks/shared/LS_root/mounts/clusters/research-cpu-mahesh/code' # AML mount, 100T disk space allocated, perfect for storing datasets here
+dataset_path = 'datasets/MSR-VTT/by_category'
+vtt_category = []
+
+imageSavePath = 'datasets_prepped/MSR-VTT/by_category'        #Create images by category
+
+imageCutRate = 1                                              #1 image every N seconds
+iCountMax = 300                                               #Max images to produce per video
+
+resize = True                                                 #Resize image or not
+resize_dim = (int(320/1), int(240/1))                         #width, height after resize if 'resize = True'
+
+createTiles = False
+nRows = 2
+mCols = 2
+
+video_file_extension = '.mp4'
+
+sample_seed = 42
+max_video_per_category = 50 # k videos to sample
+
+###
+# Quick test by reviewing first video
+for category in vtt_category:
+    
+    video_files = []
+
+    video_files = preptools.getFileList(os.path.join(dataset_root, dataset_path, category), video_file_extension)
+    print(f'{len(video_files)} videos found for {category} category.')
+    
+    preptools.runSampleTest(video_files[0]) # First video
+    
+    break
+###
+# Create required directories if missing
+os.makedirs(os.path.join(dataset_root, imageSavePath), exist_ok=True)
+###
+
+for category in vtt_category:
+    
+    video_files = []
+
+    # All videos for a category
+    video_files = preptools.getFileList(os.path.join(dataset_root, dataset_path, category), video_file_extension)
+    
+    # print(f'Processing {category} category, {len(video_files)} video files found.')    
+    
+    # Randomly sample k videos, use seed for reproducibility
+    video_files_sampled = preptools.sample_k_items(max_video_per_category, video_files, sample_seed)
+    
+    print(f'Processing {category} category, {len(video_files)} video files found, sampled {len(list(set(video_files_sampled)))} unique videos.')
+    
+    category_directory = None
+    category_directory = os.path.join(dataset_root, imageSavePath, category)
+    # print(f'category_directory:{category_directory}')
+
+    # Delete existing directory and it's content for the category. The directory will be recreated by videoToImages() function.
+    directory_path = category_directory
+    if os.path.isdir(directory_path):                              
+        # Remove the directory and all its contents  
+        shutil.rmtree(directory_path) 
+    
+    for video_file in video_files_sampled:
+        
+        # print(f'Processing started {video_file}') 
+    
+        preptools.videoToImages(video_file, category_directory, 
+                                imageCutRate, iCountMax, resize, resize_dim, createTiles=createTiles, nRows=nRows, mCols=mCols)       
 
 
-#####
-
-source ~/anaconda3/etc/profile.d/conda.sh
-conda activate my_env
+print()
+print(f'Frame extraction completed for {max_video_per_category} videos per category {vtt_category}')
+###
+###

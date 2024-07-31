@@ -1,52 +1,6 @@
-import torch
-from transformers import CLIPTokenizerFast, CLIPProcessor, CLIPModel
+# Initialise model
+clip_tokenizer, clip_processor, clip_model = preptools.initializeCLIP()
 
+output_values = preptools.getImageEmbeddingCLIP(image_file, clip_model, clip_processor)
 
-def cosine_similarity(self, vector1, vector2):  
-        dot_product = np.dot(vector1, vector2)  
-        norm_vector1 = np.linalg.norm(vector1)  
-        norm_vector2 = np.linalg.norm(vector2)  
-        similarity = dot_product / (norm_vector1 * norm_vector2)  
-        return similarity
-    
-    def get_device(self):
-        # if you have CUDA or MPS, set it to the active device like this
-        device = "cuda" if torch.cuda.is_available() else \
-                    ("mps" if torch.backends.mps.is_available() else "cpu")
-        return device
-    
-    def initializeCLIP(self):
-    
-        model_id = "openai/clip-vit-base-patch32" #https://huggingface.co/openai/clip-vit-base-patch32
-
-        device = self.get_device()
-
-        # we initialize a tokenizer, image processor, and the model itself
-        tokenizer = CLIPTokenizerFast.from_pretrained(model_id) #Used for text embeddings, not relevant in this example.
-        processor = CLIPProcessor.from_pretrained(model_id) #Used for image embeddings
-        model = CLIPModel.from_pretrained(model_id).to(device) #CLIP model
-
-        return tokenizer, processor, model
-    
-    # length 512
-    def getImageEmbeddingCLIP(self, image_path, model, processor):
-        
-        vector = None
-        
-        device = self.get_device()
-
-        image = processor(
-            text=None,
-            images=imread(image_path),
-            return_tensors='pt'
-        )['pixel_values'].to(device)
-
-        # image.shape
-        with torch.no_grad():
-            tensor_result = model.get_image_features(image)
-            tensor_result_cpu = tensor_result.to("cpu")
-            tensor_result_cpu.shape
-            # print(tensor_result_cpu.squeeze(0).numpy())
-            vector = tensor_result_cpu.squeeze(0).numpy()
-        
-        return vector   
+float(preptools.cosine_similarity(output_values_prev, output_values))

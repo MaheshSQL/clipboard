@@ -1,22 +1,6 @@
-import hashlib  
-  
-def create_unique_hash(string1, string2):  
-    # Concatenate the two strings  
-    concatenated_string = string1 + string2  
-      
-    # Create a SHA-256 hash object  
-    hash_object = hashlib.sha256()  
-      
-    # Update the hash object with the concatenated string encoded in UTF-8  
-    hash_object.update(concatenated_string.encode('utf-8'))  
-      
-    # Retrieve the hexadecimal representation of the hash  
-    unique_hash = hash_object.hexdigest()  
-      
-    return unique_hash  
-  
-# Example usage  
-string1 = "hello"  
-string2 = "world"  
-unique_hash = create_unique_hash(string1, string2)  
-print(f"The unique hash of the concatenation of '{string1}' and '{string2}' is: {unique_hash}")  
+# Create JSON file path
+json_file = os.path.join(dataset_root, test_dataset_export_path, test_dataset_export_file)
+
+# Write JSON data to a file  
+with open(json_file, 'w') as json_file_content:
+    json.dump(test_query_data_json, json_file_content)

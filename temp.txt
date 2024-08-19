@@ -1,1 +1,3 @@
-Temp
+dict = {"key1": {"question1": "abcd?", "answer1": "ppp"}, "key2": {"question2": "abcd?", "answer2": "ppp"}}  
+questions_dict = {k: {qk: qv for qk, qv in v.items() if 'question' in qk} for k, v in dict.items()}  
+print(questions_dict)  

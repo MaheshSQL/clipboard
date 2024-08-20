@@ -1,3 +1,17 @@
-dict = {"question1": "abcd?", "answer1": "ppp", "question2": "abcd?", "answer2": "ppp"}  
-questions_dict = {k: v for k, v in dict.items() if 'question' in k}  
-print(questions_dict)  
+from PIL import Image  
+import base64  
+from io import BytesIO  
+  
+# Function to convert image to base64 with resizing  
+def image_to_base64(self, image_path, width, height):  
+    # Open the image file  
+    with Image.open(image_path) as image:  
+        # Resize the image  
+        image = image.resize((width, height))  
+          
+        # Save the resized image to a BytesIO object  
+        buffered = BytesIO()  
+        image.save(buffered, format="JPEG")  
+          
+        # Encode the image to base64  
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')  

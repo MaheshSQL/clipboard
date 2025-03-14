@@ -1,38 +1,38 @@
-import json  
-import csv  
-import os  
-  
-def split_path_into_directories(path):  
-    directories = path.strip(os.sep).split(os.sep)  
-    # Assuming you always need the first three directories  
-    dir1 = directories[0] if len(directories) > 0 else ''  
-    dir2 = directories[1] if len(directories) > 1 else ''  
-    dir3 = directories[2] if len(directories) > 2 else ''  
-    return dir1, dir2, dir3  
-  
-def jsonl_to_csv_with_path_split(jsonl_file_path, csv_file_path):  
-    with open(jsonl_file_path, 'r') as jsonl_file:  
-        # Read all lines into a list  
-        lines = jsonl_file.readlines()  
-          
-        # Parse the first line to get the keys for the CSV header  
-        first_line = json.loads(lines[0])  
-        fieldnames = list(first_line.keys())  
-          
-        # Add new fields for the directories  
-        fieldnames.extend(['dir1', 'dir2', 'dir3'])  
-          
-        # Create and write to the CSV file  
-        with open(csv_file_path, 'w', newline='') as csv_file:  
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)  
-            writer.writeheader()  
-              
-            # Write each JSON object as a row in the CSV  
-            for line in lines:  
-                json_obj = json.loads(line)  
-                if 'path' in json_obj:  
-                    dir1, dir2, dir3 = split_path_into_directories(json_obj['path'])  
-                    json_obj['dir1'] = dir1  
-                    json_obj['dir2'] = dir2  
-                    json_obj['dir3'] = dir3  
-                writer.writerow(json_obj) 
+def get_aoai_llm_response(self, system_message, context, query):
+    
+        messages = []
+
+        system_message_chat_item = {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": system_message
+                        }
+                    ]
+                }        
+        messages.append(system_message_chat_item)
+
+        user_prompt_chat_item = {
+            "role": "user",
+            "content": [
+                    {
+                        "type": "text",
+                        "text": context + f'\n Query: {query}'
+                    }                    
+                    ]
+                }   
+        messages.append(user_prompt_chat_item)
+            
+        completion = self.aoai_client.chat.completions.create(
+            model=self.aoai_deployment_name, 
+            messages=messages,
+            max_tokens=self.aoai_max_tokens,  
+            temperature=self.aoai_temperature,  
+            top_p=self.aoai_top_p,  
+            frequency_penalty=0,  
+            presence_penalty=0,        
+            stream=False
+        )  
+
+        return completion.to_json()
